@@ -76,8 +76,11 @@
 (defvar *textmate-mode-map* (make-sparse-keymap))
 (defvar *textmate-project-root* nil)
 (defvar *textmate-project-files* '())
-(defvar *textmate-gf-exclude* 
-  "/\\.|vendor|fixtures|tmp|log|build|\\.xcodeproj|\\.nib|\\.framework|\\.app|\\.pbproj|\\.pbxproj|\\.xcode|\\.xcodeproj|\\.bundle")
+(defvar *textmate-exclude-list* '("vendor" "fixtures" "tmp" "log" "build" ".git" ".svn"
+				  ".*[.]xcodeproj" ".*[.]nib" ".*[.]framework" ".*[.]app"
+				  ".*[.]pbproj" ".*[.]pbxproj"
+				  ".*[.]xcode" ".*[.]xcodeproj" ".*[.]bundle"
+				  ".*[.]elc$" ".*[.]class$" ".*[.]o$" ".*[.]a$"))
 
 (defvar *textmate-keybindings-list* `((textmate-next-line 
                                      [A-return]    [M-return])
@@ -183,17 +186,38 @@
 
 ;;; Utilities
 
+;;
+;; modified version from find-recursive that ignores *textmate-exclude-list*
+;; and does not ignore directories that begin with a dot (except . and ..)
+;;
+(defun textmate-find-recursive-directory-relative-files (directory
+							 relative-directory
+							 file-regexp)
+  (let* ((full-dir (concat directory "/" relative-directory))
+	 (matches
+	  (mapcar
+	   (function (lambda (x)
+		       (concat relative-directory x)))
+	   (find-recursive-filter-out *textmate-exclude-list*
+				(directory-files full-dir nil
+						 file-regexp nil t))))
+	 (inner
+	  (mapcar
+	   (function
+	    (lambda (dir)
+	      (find-recursive-directory-relative-files directory
+						 (concat relative-directory
+							 dir "/")
+						 file-regexp)))
+	   (find-recursive-filter-out (append '(nil "^[.]$" "^[.][.]$") *textmate-exclude-list*)
+				(directory-files full-dir nil ".*"
+						 nil 'directories)))))
+    (mapcar (function (lambda (dir) (setq matches (append matches dir))))
+	    inner)
+    matches))
+
 (defun textmate-project-files (root)
-  (split-string 
-    (shell-command-to-string 
-     (concat 
-      "find " 
-      root
-      " -type f  | grep -vE '"
-      *textmate-gf-exclude*
-      "' | sed 's:"
-      *textmate-project-root* 
-      "/::'")) "\n" t))
+  (textmate-find-recursive-directory-relative-files root "" ".*"))
 
 (defun textmate-cached-project-files (&optional root)
   (cond
